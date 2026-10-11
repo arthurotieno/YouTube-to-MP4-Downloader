@@ -1,0 +1,64 @@
+# Builds the ytmp4 executable for Windows, macOS and Linux (PyInstaller can only build for the
+# system it runs on, so each one needs its own runner).
+#
+# Run it by hand from the Actions tab to get the three files as build artifacts, or push a tag
+# like v1.0 to also attach them to a GitHub release.
+name: Build executables
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            built: dist/ytmp4.exe
+            asset: ytmp4-windows.exe
+          - os: macos-latest          # Apple Silicon
+            built: dist/ytmp4
+            asset: ytmp4-macos
+          - os: ubuntu-22.04          # an older release, so the binary also runs on newer ones
+            built: dist/ytmp4
+            asset: ytmp4-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: .\build.bat
+        shell: cmd
+      - name: Build (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: sh build.sh
+      - name: Check that it starts
+        run: ${{ matrix.built }} --help
+        shell: bash
+      - name: Rename
+        run: mv "${{ matrix.built }}" "${{ matrix.asset }}"
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ytmp4-*
